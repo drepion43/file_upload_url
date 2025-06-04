@@ -46,6 +46,7 @@ def upload_file(category, subdir):
         return 'Invalid file', 400
     return render_template_string(UPLOAD_FORM, category=category, subdir=subdir)
 
+
 @app.route('/download/<category>/<subdir>/<filename>')
 def download_file(category, subdir, filename):
     category = secure_filename(category)
@@ -53,9 +54,43 @@ def download_file(category, subdir, filename):
     filename = secure_filename(filename)
     upload_dir = os.path.join(app.config['UPLOAD_FOLDER'], category, subdir)
     filepath = os.path.join(upload_dir, filename)
+    
     if not os.path.exists(filepath):
         abort(404)
-    return send_from_directory(upload_dir, filename, as_attachment=True)
+    
+    # 명시적으로 다운로드 이름 지정
+    return send_from_directory(
+        upload_dir,
+        filename,
+        as_attachment=True,
+        download_name=filename  # Flask >= 2.0
+    )
+
+@app.route('/download/<category>/<subdir>')
+def browse_files(category, subdir):
+    category = secure_filename(category)
+    subdir = secure_filename(subdir)
+    upload_dir = os.path.join(app.config['UPLOAD_FOLDER'], category, subdir)
+
+    if not os.path.exists(upload_dir):
+        abort(404)
+
+    files = os.listdir(upload_dir)
+    file_list_html = '''
+    <!doctype html>
+    <title>Files in {{ category }}/{{ subdir }}</title>
+    <h1>Download Files from "{{ category }}/{{ subdir }}"</h1>
+    <ul>
+      {% for file in files %}
+        <li>
+          {{ file }} - 
+          <a href="/download/{{ category }}/{{ subdir }}/{{ file }}">Download</a>
+        </li>
+      {% endfor %}
+    </ul>
+    '''
+    return render_template_string(file_list_html, category=category, subdir=subdir, files=files)
+
 
 if __name__ == '__main__':
    app.run('0.0.0.0',port=5000,debug=True)
