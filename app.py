@@ -1,6 +1,7 @@
 from flask import Flask, request, render_template_string, send_from_directory, abort
-from werkzeug.utils import secure_filename
 import os
+import re
+import unicodedata
 
 BASE_UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif'}
@@ -10,6 +11,13 @@ app.config['UPLOAD_FOLDER'] = BASE_UPLOAD_FOLDER
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def safe_filename(filename):
+    # 유니코드 정규화 및 특수 문자 제거, 한글은 유지
+    filename = unicodedata.normalize('NFC', filename)
+    filename = re.sub(r'[<>:"/\\|?*]', '', filename)
+    filename = re.sub(r'\s+', ' ', filename).strip()
+    return filename
 
 def ensure_dir(path):
     if not os.path.exists(path):
@@ -27,15 +35,15 @@ UPLOAD_FORM = '''
 
 @app.route('/upload/<category>/<subdir>', methods=['GET', 'POST'])
 def upload_file(category, subdir):
-    category = secure_filename(category)
-    subdir = secure_filename(subdir)
+    category = safe_filename(category)
+    subdir = safe_filename(subdir)
     upload_dir = os.path.join(app.config['UPLOAD_FOLDER'], category, subdir)
     ensure_dir(upload_dir)
 
     if request.method == 'POST':
         file = request.files.get('file')
         if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
+            filename = safe_filename(file.filename)
             filepath = os.path.join(upload_dir, filename)
             file.save(filepath)
             download_url = f'/download/{category}/{subdir}/{filename}'
@@ -46,30 +54,28 @@ def upload_file(category, subdir):
         return 'Invalid file', 400
     return render_template_string(UPLOAD_FORM, category=category, subdir=subdir)
 
-
 @app.route('/download/<category>/<subdir>/<filename>')
 def download_file(category, subdir, filename):
-    category = secure_filename(category)
-    subdir = secure_filename(subdir)
-    filename = secure_filename(filename)
+    category = safe_filename(category)
+    subdir = safe_filename(subdir)
+    filename = safe_filename(filename)
     upload_dir = os.path.join(app.config['UPLOAD_FOLDER'], category, subdir)
     filepath = os.path.join(upload_dir, filename)
     
     if not os.path.exists(filepath):
         abort(404)
     
-    # 명시적으로 다운로드 이름 지정
     return send_from_directory(
         upload_dir,
         filename,
         as_attachment=True,
-        download_name=filename  # Flask >= 2.0
+        download_name=filename
     )
 
 @app.route('/download/<category>/<subdir>')
 def browse_files(category, subdir):
-    category = secure_filename(category)
-    subdir = secure_filename(subdir)
+    category = safe_filename(category)
+    subdir = safe_filename(subdir)
     upload_dir = os.path.join(app.config['UPLOAD_FOLDER'], category, subdir)
 
     if not os.path.exists(upload_dir):
@@ -91,6 +97,5 @@ def browse_files(category, subdir):
     '''
     return render_template_string(file_list_html, category=category, subdir=subdir, files=files)
 
-# main
 if __name__ == '__main__':
-   app.run('0.0.0.0',port=5000,debug=True)
+    app.run('0.0.0.0', port=5000, debug=True)
